@@ -1,41 +1,69 @@
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
-import os
 from pathlib import Path
 
-def simulate_unet_prediction(img_path, save_path="outputs/step2_mask.png"):
-    img_path = Path(img_path)
-    save_path = Path(save_path)
-
-    if not img_path.exists():
-        raise FileNotFoundError(f"Image not found at {img_path.resolve()}")
-
-    img = cv2.imread(str(img_path))
+def auto_label_mask(img_path, save_path="outputs/step2_mask.png"):
+    img = cv2.imread(img_path)
     if img is None:
-        raise ValueError(f"Could not read image from {img_path}")
+        raise FileNotFoundError(img_path)
 
     h, w = img.shape[:2]
 
-    # Create dummy mask
-    mask = np.zeros((h, w), dtype=np.uint8)
-    center = (w // 2, h // 2)
-    axes = (int(w * 0.25), int(h * 0.3))
-    cv2.ellipse(mask, center, axes, 0, 0, 360, 255, -1)
+    # Convert to HSV and work on bottom half only
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hsv_bottom = hsv[h//2:, :]
+    full_mask = np.zeros((h, w), dtype=np.uint8)
 
-    # Ensure output directory exists
-    save_path.parent.mkdir(parents=True, exist_ok=True)
+    # Tighter filter for label paper: very bright, low-sat
+    lower = np.array([0, 0, 200])
+    upper = np.array([180, 40, 255])
+    sub_mask = cv2.inRange(hsv_bottom, lower, upper)
 
-    cv2.imwrite(str(save_path), mask)
-    print(f"[✓] Saved simulated mask to: {save_path.resolve()}")
+    # Find contours in bottom half
+    contours, _ = cv2.findContours(sub_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        raise RuntimeError("No bright region found in bottom half.")
 
-    # Show the mask
-    plt.imshow(mask, cmap="gray")
-    plt.title("Step 2: Simulated U-Net Label Mask")
-    plt.axis("off")
+    label_contour = None
+    max_score = -1
+
+    # Evaluate best contour by area × aspect ratio score
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if area < 3000: continue
+
+        x, y, w_box, h_box = cv2.boundingRect(cnt)
+        aspect = w_box / h_box if h_box > 0 else 0
+
+        if 0.8 <= aspect <= 5.0:  # allow more square-like labels too
+            score = area * aspect
+            if score > max_score:
+                max_score = score
+                label_contour = cnt
+
+    if label_contour is None:
+        raise RuntimeError("No label-like contour passed all filters.")
+
+    # Shift y-coords and draw full mask
+    label_contour += np.array([0, h//2])
+    cv2.drawContours(full_mask, [label_contour], -1, 255, -1)
+
+    # Save and show
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(save_path, full_mask)
+    print(f"[✓] Saved final cleaned label mask → {save_path}")
+
+    plt.subplot(1, 2, 1)
+    plt.imshow(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    plt.title("Original"); plt.axis("off")
+
+    plt.subplot(1, 2, 2)
+    plt.imshow(full_mask, cmap="gray")
+    plt.title("Final Mask"); plt.axis("off")
+
     plt.show()
-
-    return mask
+    return full_mask
 
 if __name__ == "__main__":
-    simulate_unet_prediction("outputs/step1_resized.jpg")
+    auto_label_mask("data/image.png")
