@@ -1,4 +1,3 @@
-#  ── src/step3_fit_cylinder.py ──────────────────────────────────────
 import cv2, numpy as np, matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -8,9 +7,9 @@ def get_label_points(mask_path, save_vis="outputs/step3_points.png"):
         raise FileNotFoundError(mask_path)
 
     H, W = mask.shape
-    mid_y = H * 0.5                     # anything above this is ignored
+    mid_y = H * 0.5                     
 
-    # ── 1.   find candidate contours ─────────────────────────────────
+    # Find candidate contours
     cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                cv2.CHAIN_APPROX_SIMPLE)
     label_cnt = None
@@ -29,14 +28,16 @@ def get_label_points(mask_path, save_vis="outputs/step3_points.png"):
     if label_cnt is None:
         raise RuntimeError("No contour looks like a label")
 
-    # ── 2.   6 key points on that bounding box ──────────────────────
+    # 6 key points on that bounding box 
     x, y, w, h = cv2.boundingRect(label_cnt)
     TL, TR = (x, y),          (x+w, y)
     ML, MR = (x, y+h//2),     (x+w, y+h//2)
     BL, BR = (x, y+h),        (x+w, y+h)
     pts = np.array([TL, TR, ML, MR, BL, BR], dtype=np.int32)
 
-    # ── 3.   visualise ──────────────────────────────────────────────
+    np.save("outputs/step3_points.npy", pts)
+
+    # Visualise 
     vis = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
     for (px, py) in pts:
         cv2.circle(vis, (px, py), 5, (0, 255, 0), -1)
