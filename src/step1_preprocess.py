@@ -28,4 +28,4 @@ def preprocess_image(img_path: str, scale: float = 0.5):
 
 if __name__ == "__main__":
     # run FROM repo root:  python src/step1_preprocess.py
-    preprocess_image("data/image.png", scale=0.5)
+    preprocess_image("data/images/000.jpg", scale=0.5)
